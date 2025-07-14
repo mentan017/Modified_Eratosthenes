@@ -1,2 +1,2 @@
-./build
+build/calc_primes
 primes.out
