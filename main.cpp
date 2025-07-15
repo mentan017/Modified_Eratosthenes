@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <fstream>
 #include <mutex>
@@ -17,6 +18,7 @@ void prime_calculator(int thread, long long max, long long jump, long long* veri
 	long long array_size = jump/16;
 	unsigned char* primes = new unsigned char[array_size];
 	unsigned char masks[] = {1,2,4,8,16,32,64,128};
+	char f_byte, s_byte, t_byte;
 	long long num, mult, offset;
 
 	while(1){
@@ -48,16 +50,14 @@ void prime_calculator(int thread, long long max, long long jump, long long* veri
 		//Write the prime numbers to a file
 		long long last_prime=offset-2; //=current_batch+1
 		long diff = 0;
-		unsigned char f_byte, s_byte, t_byte;
 		string filename = ".database/primes_" + to_string(current_batch) + ".out";
-		ofstream outfile(filename, ios_base::binary | std::ios::app);
+		ofstream outfile(filename, ios_base::binary);
 		for(int i=0; i<array_size; i++){
 			for(int j=0; j<8; j++){
 				if(!(masks[j] & primes[i])){
 					diff = i*16+j*2+offset - last_prime;
-					if(diff<256){ //TODO Investigate this if condition, something wrong is happening when writing bytes to the file
-						f_byte = (unsigned char)(diff%256);
-						outfile << f_byte;
+					if(diff<256){ 
+						outfile << (unsigned char)(diff%256);
 					}else if(diff<32768){
 						f_byte = (((diff)>>8)<<1)+1;
 						s_byte = (unsigned char)(diff%256);
@@ -68,7 +68,7 @@ void prime_calculator(int thread, long long max, long long jump, long long* veri
 						t_byte = (unsigned char)(diff%256);
 						outfile << f_byte << s_byte << t_byte;
 					}
-					last_prime = i*16+j*2+offset;
+					last_prime += diff;
 				}
 			}
 		}
@@ -161,12 +161,82 @@ int main(int argc, char **argv){
 			Threads[i] -> join();
 		}
 
-		//TODO Merge all files
-		char byte[1] = {0};
-		ifstream infile(".database/primes_0.out", ios_base::binary);
-		infile.read(byte, 1);
-		cout << "First byte: " << (int)byte[0] << endl;
+		//Merge all files
+		long long diff;
+		long long last_prime = 3;
+		long batch_num = jump;
+		char byte[1] = {2};
+		unsigned char f_byte, s_byte, t_byte;
+		string filename;
 
+		ofstream outfile("primes.out", ios_base::binary);
+		ifstream infile(".database/primes_0.out", ios_base::binary);
+		//We merge the first file separetly because the difference between 2 and 3 is 1, which is the only execption of the encoding algorithm used here (where a odd number signifies that two bytes or more encode the difference between two primes)
+		outfile << byte[0];
+		infile.read(byte, 1);
+		outfile << (unsigned char)(byte[0] - 1);
+		infile.read(byte, 1);
+		while(byte[0]){
+			outfile << (unsigned char)byte[0];
+			diff = 0;
+			while(((unsigned char)byte[0])%2 == 1){
+				diff += ((unsigned char)byte[0])>>1;
+				diff = diff<<7;
+				infile.read(byte, 1);
+				outfile << (unsigned char)byte[0];
+			}
+			diff = diff << 1;
+			last_prime += diff + (unsigned char)byte[0];
+			infile.read(byte, 1);
+		}
+		infile.close();
+		filesystem::remove(".database/primes_0.out");
+		//Merge the rest of the file
+		while(batch_num+1 < max){
+			filename = ".database/primes_" + to_string(batch_num) + ".out";
+			ifstream infile(filename, ios_base::binary);
+			diff = 0;
+			infile.read(byte, 1);
+			while(((unsigned char)byte[0])%2 == 1){
+				diff += ((unsigned char)byte[0])>>1;
+				diff = diff<<7;
+				infile.read(byte, 1);
+			}
+			diff = diff<<1;
+			diff += (unsigned char)byte[0] + batch_num - last_prime+1;
+			if(diff<256){
+				outfile<<(unsigned char)(diff%256);
+			}else if(diff<32768){
+				f_byte = (((diff)>>8)<<1)+1;
+				s_byte = (unsigned char)(diff%256);
+				outfile << f_byte << s_byte;
+			}else{
+				f_byte = (((diff)>>15)<<1)+1;
+				s_byte = ((((diff)%32768)>>8)<<1)+1;
+				t_byte = (unsigned char)(diff%256);
+				outfile << f_byte << s_byte << t_byte;
+			}
+			last_prime += diff;
+			infile.read(byte, 1);
+			while(byte[0] != 0){
+				outfile << (unsigned char)byte[0];
+				diff = 0;
+				while(((unsigned char)byte[0])%2 == 1){
+					diff += ((unsigned char)byte[0])>>1;
+					diff = diff<<7;
+					infile.read(byte, 1);
+					outfile << (unsigned char)byte[0];
+				}
+				diff = diff << 1;
+				last_prime += diff + (unsigned char)byte[0];
+				infile.read(byte, 1);
+			}
+			infile.close();
+			batch_num+=jump;
+			filesystem::remove(filename);
+		}
+		outfile.put('\0');
+		outfile.close();
 		cout << "Finished!" << endl;
 	}
 	return 0;
