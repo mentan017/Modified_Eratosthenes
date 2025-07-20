@@ -4,7 +4,7 @@
 using namespace std;
 
 int main(){
-	int found = 0;
+	long long found = 2;
 	long long prime = 3;
 	char byte[1] = {0};
 	long long diff;
@@ -21,8 +21,10 @@ int main(){
 		}
 		diff = diff<<1;
 		prime += diff + (unsigned char)byte[0];
+		found++;
 		infile.read(byte, 1);
 	}
 	infile.close();
+	cout << "There are " << found << " prime numbers." << endl;
 	cout << prime << endl;
 }

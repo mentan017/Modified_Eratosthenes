@@ -1,8 +1,9 @@
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <mutex>
 #include <string.h>
 #include <thread>
@@ -11,6 +12,11 @@ using namespace std;
 
 long long next_batch=0;
 mutex mtx;
+
+uint64_t timeMillisec(){
+	using namespace std::chrono;
+	return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
 
 void prime_calculator(int thread, long long max, long long jump, long long* verif_primes, long long vp_size){ //vp stands for verif_primes
 	//Declare variables
@@ -26,6 +32,10 @@ void prime_calculator(int thread, long long max, long long jump, long long* veri
 		mtx.lock();
 		current_batch = next_batch;
 		next_batch+=jump;
+		//Log file
+		ofstream log_file("primes.log", std::ios::app);
+		log_file << "[" << timeMillisec() << " | Thread " << thread << "] Computing primes from " << current_batch << " to " << next_batch << endl;
+		log_file.close();
 		mtx.unlock();
 		if(current_batch+1>=max){break;}
 		
@@ -102,12 +112,19 @@ int main(int argc, char **argv){
 	}else if(max%jump){
 		cout << "The max parameter has to be a multiple of the jump parameter" << endl;
 	}else{
+		//Remove the previous log file
+		ofstream log_file("primes.log");
+		log_file << "[" << timeMillisec() << "] Started program. Computing prime numbers from 0 to " << max << " on " << threads << " threads with jumps of " << jump << "." << endl;
+		
 		//Compute the actual maximum number that will be checked
 		long long total_bytes;
 		max--;
 		max%16 ? total_bytes = (max/16)+1 : total_bytes = (max/16);
 		max = 16*total_bytes+1;
 		
+		log_file << "[" << timeMillisec() << "] The program is expected to use " << (jump/16)*threads << " bytes (" << ((jump/16)*threads)/1024 << "kB) of RAM." << endl;
+		log_file.close();
+
 		//Compute all the prime numbers to the sqrt of max
 		//These prime numbers will be used to compute the rest of the prime numbers
 		long long array_size, num, mult, primes_amount;
@@ -162,6 +179,10 @@ int main(int argc, char **argv){
 		}
 
 		//Merge all files
+		//Log file
+		ofstream log_file_2("primes.log", std::ios::app);
+		log_file_2 << "[" << timeMillisec() << "] Merging the output files from the threads." << endl;
+
 		long long diff;
 		long long last_prime = 3;
 		long batch_num = jump;
@@ -237,6 +258,8 @@ int main(int argc, char **argv){
 		}
 		outfile.put('\0');
 		outfile.close();
+		log_file_2 << "[" << timeMillisec() << "] Finished!" << endl;
+		log_file_2.close();
 		cout << "Finished!" << endl;
 	}
 	return 0;
